@@ -1,7 +1,5 @@
 "use strict";
 
-const fs = require('fs');
-
 /**
  * Adapta un mensaje de Telegram a un formato genérico.
  * @param {TelegramBot} bot - La instancia del bot de Telegram.
@@ -10,13 +8,18 @@ const fs = require('fs');
  */
 function adaptTelegramMessage(bot, msg) {
     const chatId = msg.chat.id;
+    const from = msg.from;
 
     return {
         platform: 'telegram',
         chatId: chatId,
         text: msg.text || '',
         args: (msg.text || '').split(/\s+/).slice(1),
-        
+
+        // --- ¡NUEVO! Información del remitente ---
+        senderId: from.id,
+        senderName: from.first_name || from.username || 'Usuario', // Usamos el nombre, o el username como fallback
+
         // --- Funciones de respuesta estandarizadas ---
 
         reply: (text) => {
@@ -36,7 +39,6 @@ function adaptTelegramMessage(bot, msg) {
         },
 
         showLoading: (action = 'typing') => {
-            // action puede ser: 'typing', 'upload_photo', 'upload_video', etc.
             return bot.sendChatAction(chatId, action);
         }
     };
