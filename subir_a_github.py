@@ -19,7 +19,7 @@ except subprocess.CalledProcessError:
 
 if "origin" not in remotes:
     print("❌ No encontré un remoto llamado 'origin'. Agregalo con:")
-    print("   git remote add origin https://github.com/Duend3Manu/Botillero.git\n")
+    print("   git remote add origin https://github.com/Duend3Manu/Botillero-Telegram\n")
     exit()
 
 # 🧹 Limpia archivos ignorados que estén siendo trackeados
