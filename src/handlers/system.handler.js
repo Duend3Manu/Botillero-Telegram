@@ -1,76 +1,69 @@
 "use strict";
 
-const os = require('os');
 const si = require('systeminformation');
-const axios = require('axios');
-const moment = require('moment-timezone');
+const moment = require('moment');
 require('moment-duration-format');
-const { version } = require('../../package.json');
+const { exec } = require('child_process');
 
-// --- Función para medir el ping a un servidor externo ---
-async function checkPing() {
+/**
+ * --- ¡CORREGIDO Y MEJORADO! ---
+ * Genera un mensaje de estado del sistema que es agnóstico a la plataforma.
+ * Ya no depende de funciones específicas de WhatsApp.
+ * @param {object} message - El objeto de mensaje adaptado.
+ * @returns {Promise<string>} Un mensaje con el estado del sistema.
+ */
+async function handlePing(message) {
     try {
-        const start = Date.now();
-        await axios.get('https://www.google.cl', { timeout: 5000 });
-        return `${Date.now() - start} ms`;
-    } catch (error) {
-        console.error('Error al medir el ping a Google:', error);
-        return 'No disponible';
-    }
-}
+        const startTime = Date.now(); // Medir latencia
 
-// --- Función principal del manejador (unificada) ---
-async function handlePing(message, client) {
-    try {
-        // --- Métricas del Bot (las que añadimos) ---
-        const botLatency = (Date.now() / 1000) - message.timestamp;
-        const botUptimeSeconds = process.uptime();
-        const botUptime = moment.duration(botUptimeSeconds, 'seconds').format("d[d], h[h], m[m], s[s]");
-        const botRamUsage = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
-        const chats = await client.getChats();
-        const chatCount = chats.length;
+        // Obtener información del sistema de forma asíncrona
+        const osInfoPromise = si.osInfo();
+        const cpuInfoPromise = si.cpu();
+        const memInfoPromise = si.mem();
 
-        // --- Métricas del Servidor (tu lógica original) ---
-        const [pingTime, cpuInfo, ramInfo, diskInfo, osInfo] = await Promise.all([
-            checkPing(),
-            si.currentLoad(),
-            si.mem(),
-            si.fsSize(),
-            si.osInfo()
-        ]);
+        // Esperar a que todas las promesas se resuelvan
+        const [os, cpu, mem] = await Promise.all([osInfoPromise, cpuInfoPromise, memInfoPromise]);
 
-        const mainDisk = diskInfo[0] || {}; // Tomamos el primer disco
-        const cpuUsage = cpuInfo.currentLoad.toFixed(2);
-        const ramUsage = ((ramInfo.total - ramInfo.free) / 1024 / 1024 / 1024).toFixed(2);
-        const totalRam = (ramInfo.total / 1024 / 1024 / 1024).toFixed(2);
-        const diskUsage = (mainDisk.used / 1024 / 1024 / 1024).toFixed(2);
-        const totalDisk = (mainDisk.size / 1024 / 1024 / 1024).toFixed(2);
+        const uptime = moment.duration(process.uptime(), 'seconds').format("D[d], H[h], m[m], s[s]");
+        const ramUsage = `${(mem.used / 1024 / 1024 / 1024).toFixed(2)} GB / ${(mem.total / 1024 / 1024 / 1024).toFixed(2)} GB`;
+        
+        const endTime = Date.now();
+        const latency = endTime - startTime;
 
-        // --- Construimos el mensaje de respuesta unificado ---
-        const response = `
-*🤖 Estado del Botillero y Sistema ⚙️*
-
---- *BOT* ---
-◦ *Versión:* v${version} 📦
-◦ *Latencia:* ${botLatency.toFixed(3)} s 핑
-◦ *Tiempo Activo:* ${botUptime} ⏱️
-◦ *Uso de RAM:* ${botRamUsage} MB 💾
-◦ *Chats Activos:* ${chatCount} 💬
-
---- *SERVIDOR* ---
-◦ *Plataforma:* ${osInfo.platform} (${osInfo.distro}) 💻
-◦ *Ping a Google:* ${pingTime} 🌐
-◦ *Uso de CPU:* ${cpuUsage}% ⚡
-◦ *Uso de RAM:* ${ramUsage} / ${totalRam} GB 🧠
-◦ *Uso de Disco:* ${diskUsage} / ${totalDisk} GB 💽
-        `.trim();
+        // Construir la respuesta en formato Markdown
+        let response = `*Pong!* 🏓\n\n`;
+        response += `*Estadísticas del Servidor:*\n`;
+        response += `➢ *SO:* ${os.distro} (${os.release})\n`;
+        response += `➢ *CPU:* ${cpu.manufacturer} ${cpu.brand}\n`;
+        response += `➢ *RAM:* ${ramUsage}\n`;
+        response += `➢ *Tiempo Activo:* ${uptime}\n\n`;
+        response += `*Estadísticas del Bot:*\n`;
+        response += `➢ *Plataforma:* \`${message.platform}\`\n`;
+        response += `➢ *Latencia:* ${latency} ms`;
 
         return response;
 
     } catch (error) {
         console.error("Error al generar el estado del sistema:", error);
-        return "Ucha, no pude obtener el estado completo del sistema. Algo falló.";
+        return "❌ Hubo un problema al obtener el estado del sistema.";
     }
 }
 
-module.exports = { handlePing };
+// Puedes mantener las otras funciones si las usas, o eliminarlas.
+// Por ejemplo, si handleRestart no es necesario, puedes quitarlo.
+function handleRestart(message) {
+    message.reply('Reiniciando el bot...');
+    exec('npm start', (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Error al reiniciar: ${error}`);
+            return;
+        }
+        console.log(`stdout: ${stdout}`);
+        console.error(`stderr: ${stderr}`);
+    });
+}
+
+module.exports = {
+    handlePing,
+    handleRestart
+};
