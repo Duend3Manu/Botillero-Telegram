@@ -10,17 +10,16 @@ async function handleMessage(bot, msg) {
     const chatId = msg.chat.id;
     const text = msg.text;
 
-    // Ignoramos mensajes que no contienen texto
     if (!text) {
-        return;
+        return; // Ignorar mensajes sin texto (fotos, stickers, etc.)
     }
 
-    // --- ¡MEJORA! Menú interactivo ---
+    // El menú interactivo con botones se activa con el comando /menu
     if (text.startsWith('/menu')) {
         const menuOptions = {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '☀ Clima', callback_data: 'clima' }, { text: ' Richter Sismos', callback_data: 'sismos' }],
+                    [{ text: '☀️ Clima', callback_data: 'clima' }, { text: ' seismograph: Sismos', callback_data: 'sismos' }],
                     [{ text: ' Indicadores Económicos', callback_data: 'valores' }, { text: ' Feriados', callback_data: 'feriados' }],
                     [{ text: ' Gira la Ruleta', callback_data: 'ruleta' }, { text: ' Mis Puntos', callback_data: 'puntos' }],
                     [{ text: ' Lista de Audios', callback_data: 'audios' }]
@@ -31,29 +30,46 @@ async function handleMessage(bot, msg) {
         return;
     }
 
-    // Para cualquier otro comando o texto, usamos el command handler
+    // Para cualquier otro comando o texto, se pasa al manejador principal
     const adaptedMessage = adaptTelegramMessage(bot, msg);
-    await commandHandler(adaptedMessage);
+    
+    // Medida de seguridad: si el mensaje no pudo ser adaptado, no continuamos.
+    if (adaptedMessage) {
+        await commandHandler(adaptedMessage);
+    }
 }
 
 /**
- * Maneja las pulsaciones de los botones del menú.
+ * --- ¡CORREGIDO Y MEJORADO! ---
+ * Maneja las pulsaciones de los botones del menú (callback queries).
  */
 async function handleCallbackQuery(bot, callbackQuery) {
     const msg = callbackQuery.message;
     const command = callbackQuery.data;
+    
+    // --- LA CORRECCIÓN CLAVE ---
+    // El usuario que presionó el botón está en `callbackQuery.from`,
+    // no en `callbackQuery.message.from` (ahí está la info del bot).
+    const user = callbackQuery.from;
 
-    // Respondemos al callback para que el cliente de Telegram sepa que lo recibimos
+    // Confirmamos a la API de Telegram que hemos recibido el evento.
     bot.answerCallbackQuery(callbackQuery.id);
 
-    // Creamos un mensaje falso que se parece a un mensaje de texto normal
+    // Creamos un objeto de mensaje "falso" que simula un comando escrito,
+    // asegurándonos de usar la información del usuario que interactuó.
     const fakeMsg = {
-        ...msg,
-        text: `/${command}` // Simulamos que el usuario escribió el comando
+        ...msg,         // Usamos el mensaje original para obtener el `chat.id`
+        from: user,     // ¡Sobrescribimos `from` con el usuario correcto!
+        text: `/${command}` // Simulamos el comando, ej: "/puntos"
     };
 
+    // Ahora, cuando el adaptador procese este `fakeMsg`, leerá al usuario correcto.
     const adaptedMessage = adaptTelegramMessage(bot, fakeMsg);
-    await commandHandler(adaptedMessage);
+
+    // Medida de seguridad: si el mensaje no pudo ser adaptado, no continuamos.
+    if (adaptedMessage) {
+        await commandHandler(adaptedMessage);
+    }
 }
 
 module.exports = {
