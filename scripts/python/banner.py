@@ -2,6 +2,7 @@
 import sys
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
+import os # Importamos os
 from datetime import datetime # Importamos datetime
 
 # --- CONFIGURACIÓN DE ESTILOS (CORREGIDA CON TUS NOMBRES DE ARCHIVO) ---
@@ -16,7 +17,12 @@ ESTILOS = {
     "disney": {"fuente": "Disney.ttf", "color_relleno": (255, 255, 255), "color_borde": (25, 67, 119)},
     # "pixel": {"fuente": "Pixel.ttf", "color_relleno": (255, 255, 255), "color_borde": (0, 0, 0)} # Si quieres usar pixel, descomenta y usa el comando !banner pixel
 }
-RUTA_FUENTES = "C:/bots/Botillero/assets/fonts/"
+
+# --- CÁLCULO DINÁMICO DE LA RUTA DE FUENTES ---
+# Esto hace que el script funcione sin importar dónde esté la carpeta del bot.
+script_dir = os.path.dirname(os.path.abspath(__file__)) # Directorio del script actual
+project_root = os.path.dirname(os.path.dirname(script_dir)) # Sube dos niveles para llegar a la raíz del proyecto
+RUTA_FUENTES = os.path.join(project_root, "assets", "fonts") + os.sep # Ruta correcta: C:\bots\Telegram Bot\assets\fonts\
 
 def crear_banner(estilo, texto_principal):
     try:
@@ -60,7 +66,7 @@ def crear_banner(estilo, texto_principal):
         dibujar_texto_con_borde((x_texto, y_texto), texto_principal.upper(), font, draw, config["color_relleno"], config["color_borde"])
         
         # --- Guardar imagen ---
-        ruta_salida = f"./banner_temp_{datetime.now().timestamp()}.png"
+        ruta_salida = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp", f"banner_temp_{datetime.now().timestamp()}.png")
         img.save(ruta_salida, "PNG")
         print(ruta_salida)
 
@@ -70,5 +76,6 @@ def crear_banner(estilo, texto_principal):
 
 if __name__ == "__main__":
     estilo_arg = sys.argv[1]
-    texto_arg = sys.argv[2]
+    # Unimos todos los argumentos después del estilo para formar el texto completo
+    texto_arg = " ".join(sys.argv[2:])
     crear_banner(estilo_arg, texto_arg)

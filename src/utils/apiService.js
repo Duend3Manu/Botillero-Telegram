@@ -1,6 +1,7 @@
 // src/utils/apiService.js
 "use strict";
 
+const FormData = require('form-data');
 const axios = require('axios');
 
 /**
@@ -94,7 +95,41 @@ async function getRutData(rut) {
     }
 }
 
+/**
+ * Consulta la información de un número de teléfono.
+ * @param {string} phoneNumber - El número a consultar.
+ * @returns {Promise<object>} Un objeto con el resultado de la consulta.
+ */
+async function getPhoneData(phoneNumber) {
+    console.log(`(apiService) -> Buscando número: ${phoneNumber}`);
+    const apiUrl = 'https://celuzador.porsilapongo.cl/celuzadorApi.php';
+    const formData = new FormData();
+    formData.append('tlfWA', phoneNumber);
+
+    try {
+        const response = await axios.post(apiUrl, formData, {
+            headers: {
+                ...formData.getHeaders(),
+                'User-Agent': 'CeludeitorAPI-TuCulitoSacaLlamaAUFAUF',
+            },
+        });
+
+        if (response.data.estado === 'correcto') {
+            const responseData = response.data.data;
+            const imageUrlMatch = responseData.match(/\*Link Foto\* : (https?:\/\/[^\s]+)/);
+            const imageUrl = imageUrlMatch ? imageUrlMatch[1] : null;
+            return { error: false, data: `ℹ️ *Información del número:*\n${responseData}`, imageUrl };
+        } else {
+            return { error: true, message: response.data.data };
+        }
+    } catch (error) {
+        console.error("Error en getPhoneData:", error.message);
+        return { error: true, message: '⚠️ Hubo un error al consultar el servicio de búsqueda. Intenta más tarde.' };
+    }
+}
+
 module.exports = {
     getPatenteDataFormatted,
-    getRutData
+    getRutData,
+    getPhoneData
 };

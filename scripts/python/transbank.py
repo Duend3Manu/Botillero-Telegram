@@ -1,76 +1,115 @@
 # -*- coding: utf-8 -*-
+"""
+Script optimizado para obtener estado de Transbank.
+Sin caché local (delegado a Node.js), con soporte de zona horaria y manejo de errores.
+"""
 import sys
+import json
 import requests
 from bs4 import BeautifulSoup
 import io
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# Forma más compatible de asegurar la codificación de la salida a UTF-8
+# Configurar salida UTF-8
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# Constantes
+# Configuración
 URL_TRANSBANK = 'https://status.transbankdevelopers.cl/'
-EMOJIS = {
-    "Operational": "✅",
-    "Degraded Performance": "⚠️",
-    "Partial Outage": "❌",
-    "Major Outage": "🚨",
-    # Añadimos más estados posibles para ser más robustos
-}
+# Requests session con reintentos
+SESSION = requests.Session()
+RETRY_STRAT = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET", "POST"]
+)
+ADAPTER = HTTPAdapter(max_retries=RETRY_STRAT)
+SESSION.mount("https://", ADAPTER)
+SESSION.mount("http://", ADAPTER)
+SESSION.headers.update({'User-Agent': 'Botillero/2.0'})
 
-def obtener_estado_transbank():
-    """Obtiene y procesa el estado de los servicios de Transbank."""
+def get_transbank_status():
+    """Obtiene el estado de los servicios haciendo scraping."""
     try:
-        response = requests.get(URL_TRANSBANK, timeout=10) # Añadimos un timeout
+        response = SESSION.get(URL_TRANSBANK, timeout=10)
         response.raise_for_status()
-        
+
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Un selector más específico para evitar elementos no deseados
-        servicios_container = soup.find('div', class_='components-container')
-        
-        # Si el contenedor principal no existe, la página cambió o está rota
-        if not servicios_container:
-            print("No se pudo encontrar el contenedor de servicios en la página. La estructura puede haber cambiado.")
-            return None
+        container = soup.find('div', class_='components-container')
 
-        servicios = servicios_container.find_all('div', class_='component-inner-container')
-        
-        if not servicios:
-            print("No se encontraron servicios individuales en la página.")
-            return None
+        if not container:
+            raise Exception('No se encontró el contenedor de servicios')
 
-        estado_servicios = {}
-        for servicio in servicios:
-            nombre = servicio.find('span', class_='name').text.strip()
-            estado = servicio.find('span', class_='component-status').text.strip()
-            estado_servicios[nombre] = estado
-        
-        return estado_servicios
+        services = container.find_all('div', class_='component-inner-container')
+        if not services:
+            raise Exception('No se encontraron servicios listados')
 
-    except requests.exceptions.Timeout:
-        print(f'Error: La solicitud a {URL_TRANSBANK} tardó demasiado tiempo en responder.')
-        return None
-    except requests.RequestException as e:
-        print(f'Error de red al acceder a la página de Transbank: {e}')
-        return None
+        status_map = {}
+        for service in services:
+            name_tag = service.find('span', class_='name')
+            status_tag = service.find('span', class_='component-status')
+
+            if name_tag and status_tag:
+                name = name_tag.text.strip()
+                status = status_tag.text.strip()
+                status_map[name] = status
+
+        if not status_map:
+            raise Exception('No se pudieron extraer los estados')
+
+        return status_map
+
     except Exception as e:
-        print(f'Ocurrió un error inesperado al procesar la página: {e}')
-        return None
+        raise e
 
 def main():
-    """Función principal para obtener y mostrar el estado de los servicios."""
-    print("Obteniendo estado de Transbank Developers...")
-    print("---------------------------------------")
-    
-    estados = obtener_estado_transbank()
-    
-    if estados:
-        for servicio, estado in estados.items():
-            # Usamos .get() para obtener el emoji, con "❓" como valor por defecto
-            emoji = EMOJIS.get(estado, "❓")
-            print(f"{emoji} {servicio}: {estado}")
-    else:
-        print("❌ No se pudo obtener el estado de Transbank en este momento.")
+    try:
+        json_output = '--json' in sys.argv
+        data = get_transbank_status()
+        
+        if json_output:
+            # Salida JSON pura para el monitoreo automático
+            print(json.dumps(data, ensure_ascii=False))
+            return
 
-if __name__ == "__main__":
+        # Formato texto para WhatsApp
+        output = "*Estado de Servicios Transbank*\n\n"
+        
+        # Normalizar estados comunes
+        for service, status in data.items():
+            normalized = {
+                'Operational': 'OK',
+                'Degraded Performance': 'WARN',
+                'Partial Outage': 'WARN',
+                'Major Outage': 'DOWN',
+                'Under Maintenance': 'MAINT',
+                'Investigating': 'WARN'
+            }.get(status, 'UNKNOWN')
+            
+            emoji_map = {
+                'OK': '✅',
+                'WARN': '⚠️',
+                'DOWN': '❌',
+                'MAINT': '🛠️',
+                'UNKNOWN': '❓'
+            }
+            emoji = emoji_map.get(normalized, '❓')
+            output += f"{emoji} {service}: {status}\n"
+
+        # Fecha en hora de Chile
+        now_chile = datetime.now(ZoneInfo('America/Santiago'))
+        timestamp = now_chile.strftime('%Y-%m-%d %H:%M:%S')
+        output += f"\nActualizado: {timestamp}"
+        
+        print(output)
+        
+    except Exception as e:
+        # Imprimir error en stderr y salir con código 1 para que Node.js lo detecte
+        print(f"Error: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == '__main__':
     main()
