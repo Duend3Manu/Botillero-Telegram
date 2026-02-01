@@ -3,7 +3,7 @@
 
 const { MessageMedia } = require('../adapters/wwebjs-adapter');
 const rateLimiter = require('../services/rate-limiter.service');
-const { handleReaction } = require('../services/messaging.service');
+const { handleReactionWithContext } = require('../services/messaging.service');
 
 // --- Lazy Loading de Servicios ---
 // Los servicios solo se cargan cuando realmente se necesitan
@@ -93,6 +93,76 @@ async function handleStickerToImage(client, message) {
     }
     
     return 'El mensaje al que respondiste no es un sticker.';
+}
+
+// --- Mapeo de Comandos a Tipos (para reacciones contextuales) ---
+const commandTypeMap = {
+    // Deportes
+    'tabla': 'sports',
+    'prox': 'sports',
+    'partidos': 'sports',
+    'tclasi': 'sports',
+    'clasi': 'sports',
+    
+    // Clima y servicios
+    'clima': 'weather',
+    'metro': 'metro',
+    'valores': 'economy',
+    'transbank': 'transbank',
+    'trstatus': 'transbank',
+    'bancos': 'bank',
+    
+    // Búsquedas
+    'wiki': 'wiki',
+    'g': 'search',
+    'noticias': 'news',
+    'pat': 'search',
+    
+    // Diversión
+    'chiste': 'joke',
+    'random': 'random',
+    'ruleta': 'ruleta',
+    's': 'fun',
+    'toimg': 'fun',
+    'puntos': 'ruleta',
+    'ranking': 'ruleta',
+    
+    // Horóscopo
+    'horoscopo': 'horoscope',
+    'chino': 'horoscope',
+    
+    // Sistema
+    'ping': 'system',
+    'menu': 'system',
+    'feriados': 'system',
+    'recap': 'system',
+    'sismos': 'earthquake',
+    
+    // Red
+    'whois': 'network',
+    'nic': 'network',
+    
+    // Utilidades
+    'bus': 'bus',
+    'far': 'pharmacy',
+    'sec': 'system',
+    'num': 'phone',
+    'tne': 'phone',
+    
+    // Grupos
+    'fap': 'search',
+    'todos': 'system',
+    
+    // Tickets y casos
+    'ticket': 'system',
+    'caso': 'system'
+};
+
+/**
+ * Obtiene el tipo de comando para reacciones contextuales
+ */
+function getCommandType(command) {
+    return commandTypeMap[command] || 'default';
 }
 
 // --- Mapa de Alias ---
@@ -251,8 +321,11 @@ async function commandHandler(client, message) {
     const resolvedCommand = commandAliases[command] || command;
 
     try {
-        await handleReaction(message, (async () => {
-            console.log(`(Handler) -> Comando recibido: "${command}"`);
+        // Obtener el tipo de comando para reacciones contextuales
+        const commandType = getCommandType(resolvedCommand);
+        
+        await handleReactionWithContext(message, (async () => {
+            console.log(`(Handler) -> Comando recibido: "${command}" [tipo: ${commandType}]`);
 
             const handler = commandMap[resolvedCommand];
             
@@ -266,7 +339,7 @@ async function commandHandler(client, message) {
             if (replyMessage) {
                 await message.reply(replyMessage);
             }
-        })());
+        })(), commandType);
     } catch (error) {
         console.error(`Error al procesar el comando "${command}":`, error);
         await message.reply(`Hubo un error al procesar el comando \`!${command}\`.`);
