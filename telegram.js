@@ -74,20 +74,97 @@ bot.on('message', async (msg) => {
             _raw: msg,
             
             // Método para responder
-            reply: async (text) => {
+            reply: async (text, quotedMsg, options = {}) => {
+                // Si 'text' es un MessageMedia, enviarlo como archivo
+                if (text && text.mimetype && text.data) {
+                    const media = text;
+                    const fileBuffer = Buffer.from(media.data, 'base64');
+                    
+                    // Determinar qué método usar según el mimetype
+                    if (media.mimetype.startsWith('audio/')) {
+                        // Enviar como audio
+                        console.log(`🎵 Enviando audio: ${media.filename} (${fileBuffer.length} bytes)`);
+                        return await bot.sendAudio(chatId, fileBuffer, {
+                            reply_to_message_id: msg.message_id,
+                            filename: media.filename
+                        }, {
+                            filename: media.filename,
+                            contentType: media.mimetype
+                        });
+                    } else if (media.mimetype.startsWith('image/')) {
+                        // Enviar como foto
+                        return await bot.sendPhoto(chatId, fileBuffer, {
+                            reply_to_message_id: msg.message_id,
+                            caption: options.caption || ''
+                        });
+                    } else if (media.mimetype.startsWith('video/')) {
+                        // Enviar como video
+                        return await bot.sendVideo(chatId, fileBuffer, {
+                            reply_to_message_id: msg.message_id,
+                            caption: options.caption || ''
+                        });
+                    } else {
+                        // Enviar como documento genérico
+                        return await bot.sendDocument(chatId, fileBuffer, {
+                            reply_to_message_id: msg.message_id,
+                            caption: options.caption || ''
+                        }, {
+                            filename: media.filename,
+                            contentType: media.mimetype
+                        });
+                    }
+                }
+                
+                // Si es texto normal, usar sendMessage
                 return await bot.sendMessage(chatId, text, {
                     parse_mode: 'Markdown',
-                    reply_to_message_id: msg.message_id
+                    reply_to_message_id: msg.message_id,
+                    ...options
                 });
             },
             
-            // Método para reaccionar (Telegram tiene soporte limitado)
+            // Método para reaccionar (con mapeo de emojis soportados)
             react: async (emoji) => {
+                // Mapear emojis complejos a emojis básicos soportados por Telegram
+                const emojiMap = {
+                    '🏳️‍🌈': '🎶',  // Bandera arcoiris -> nota musical
+                    '⏳': '👍',       // Reloj de arena -> pulgar arriba
+                    '✅': '👍',       // Check verde -> pulgar arriba
+                    '❌': '👎',       // X roja -> pulgar abajo
+                    '⚽': '🏆',       // Balón -> trofeo
+                    '🌤️': '🔥',      // Sol con nube -> fuego
+                    '☀️': '🔥',       // Sol -> fuego  
+                    '⛈️': '😱',      // Tormenta -> cara asustada
+                    '🚇': '🚀',       // Metro -> cohete
+                    '💰': '💯',       // Bolsa dinero -> 100
+                    '📈': '🔥',       // Gráfica subiendo -> fuego
+                    '📉': '😢',       // Gráfica bajando -> llorando
+                    '🔍': '🤔',       // Lupa -> pensando
+                    '📚': '📚',       // Libros
+                    '📖': '📚',       // Libro abierto -> libros
+                    '📰': '📰',       // Periódico
+                    '🎲': '🎉',       // Dado -> fiesta
+                    '✨': '🔥',       // Chispas -> fuego
+                    '🎰': '🎉',       // Slot machine -> fiesta
+                    '🎊': '🎉',       // Bola confeti -> fiesta
+                    '🔮': '🤩',       // Bola cristal -> estrellado
+                    '🌐': '🌍',       // Globo con meridianos -> tierra
+                    '📱': '📱',       // Teléfono móvil
+                    '🚌': '🚌',       // Bus
+                    '💊': '💊',       // Píldora
+                    '🌍': '🌍',       // Tierra
+                    '🏬': '💰'        // Banco -> dinero
+                };
+                
+                // Convertir emoji a versión soportada
+                const finalEmoji = emojiMap[emoji] || emoji;
+                
                 try {
-                    await bot.setMessageReaction(chatId, msg.message_id, [{ type: 'emoji', emoji: emoji }]);
+                    console.log(`🔍 Intentando reaccionar con: ${emoji} -> ${finalEmoji}`);
+                    await bot.setMessageReaction(chatId, msg.message_id, [{ type: 'emoji', emoji: finalEmoji }]);
+                    console.log(`✅ Reacción exitosa: ${finalEmoji}`);
                 } catch (err) {
-                    // Las reacciones no siempre funcionan en todos los chats
-                    console.log('No se pudo reaccionar:', err.message);
+                    console.log(`⚠️  No se pudo reaccionar con ${finalEmoji}:`, err.message);
                 }
             },
             
@@ -132,6 +209,8 @@ bot.on('message', async (msg) => {
         // Incrementar estadísticas
         incrementStats('message', chatId.toString());
         
+        console.log(`📨 Mensaje recibido: "${msg.text}" (de chat: ${chatId})`);
+        
         // Guardar mensaje en buffer (solo grupos, solo no-comandos)
         if (!msg.text.startsWith('!') && !msg.text.startsWith('/')) {
             try {
@@ -149,8 +228,11 @@ bot.on('message', async (msg) => {
             }
         }
         
-        // Si es un comando, incrementar contador
-        if (msg.text.startsWith('!') || msg.text.startsWith('/')) {
+        // Determinar si es un comando
+        const isCommand = msg.text.startsWith('!') || msg.text.startsWith('/');
+        
+        if (isCommand) {
+            // Incrementar contador de comandos
             incrementStats('command', chatId.toString());
             
             // Normalizar comandos de Telegram (/ -> !)
@@ -160,15 +242,21 @@ bot.on('message', async (msg) => {
         }
         
         try {
-            // Procesar comando a través del commandHandler existente
+            // Procesar TODOS los mensajes a través del commandHandler
+            // El handler decidirá si responder o no (comandos, easter eggs, menciones al bot, etc.)
             await commandHandler(bot, adaptedMessage);
         } catch (error) {
             console.error(`❌ Error procesando mensaje:`, error.message);
-            await bot.sendMessage(chatId, '❌ Hubo un error al procesar tu comando.');
+            // Solo enviar mensaje de error si era un comando
+            if (isCommand) {
+                await bot.sendMessage(chatId, '❌ Hubo un error al procesar tu comando.');
+            }
         }
         
         const processingTime = Date.now() - startTime;
-        console.log(`⏱️  Comando procesado en ${processingTime}ms`);
+        if (isCommand) {
+            console.log(`⏱️  Comando procesado en ${processingTime}ms`);
+        }
         
     } catch (error) {
         console.error('❌ Error en el manejador de mensajes:', error);

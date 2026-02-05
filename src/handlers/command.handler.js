@@ -280,6 +280,8 @@ const commandRegex = new RegExp(
 async function commandHandler(client, message) {
     const body = message.body.trim();
     
+    console.log(`📥 CommandHandler recibió: "${body}"`);
+    
     // Detectar comando usando regex optimizada
     let command = null;
     const match = body.match(commandRegex);
@@ -293,13 +295,18 @@ async function commandHandler(client, message) {
         }
     }
 
+
     // Easter eggs (menciones al bot)
     if (!command) {
         const lowerBody = body.toLowerCase();
+        console.log(`🔍 Verificando easter eggs en: "${lowerBody}"`);
+        
         if (/\b(bot|boot|bott|bbot)\b/.test(lowerBody)) {
+            console.log('🤖 ¡Detectada mención al bot!');
             return services.fun.handleBotMention(client, message);
         }
         if (/\b(once|onse|11)\b/.test(lowerBody)) {
+            console.log('11️⃣ ¡Detectado easter egg del 11!');
             return services.fun.handleOnce(client, message);
         }
         return;
